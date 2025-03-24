@@ -108,6 +108,8 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             logging.info('Merged headers and results')
             df['source_name'] = path.split('/')[-1]
             logging.info('Added source name')
+            df['labratory'] = 'ALS Arabia'
+            logging.info('Added labratory to insert table')
 
             # Fill NaN values with empty string and convert all columns to string
             df = df.fillna('')
@@ -130,14 +132,15 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                 'job_number':'job_number',
                 'result_status':'result_status',
                 'date_received':'date_received',
-                'date_finalized':'date_finalised'
+                'date_finalized':'date_finalised',
+                'labratory':'labratory'
             }
-            table = 'assay_result'
-            result = sql.db_replace(cnxn, df, table, column_mappings, logging)
+            table = 'assay_result_testing'
+            result = sql.db_insert(cnxn, df, table, column_mappings, logging)
             logging.info(result)
 
             #sheet_status = result['status']
-            deleted_count = result['deleted_count']
+            sample_count = result['sample_count']
             inserted_count = result['inserted_count']    
             logging.info(log)
 
@@ -153,7 +156,7 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                             log, 
                             "low", 
                             inserted_count,
-                            deleted_count,
+                            sample_count,
                             logging
                         )
     else:

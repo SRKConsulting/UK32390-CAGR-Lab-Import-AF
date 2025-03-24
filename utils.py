@@ -53,7 +53,7 @@ def create_response(
         log: str, 
         importance: str, 
         inserted_count: str, 
-        deleted_count: str, 
+        sample_count: str, 
         logger
     ):
     """_summary_
@@ -64,7 +64,7 @@ def create_response(
         log (str)
         importance (str)
         inserted_count (str)
-        deleted_count (str)
+        sample_count (str)
         logger (_type_)
 
     Returns:
@@ -77,7 +77,8 @@ def create_response(
         "importance": importance, 
         "status_code": 200, 
         "inserted_count": inserted_count,
-        "deleted_count":deleted_count
+        "sample_count" : sample_count
+        # "deleted_count":deleted_count
     })
     logger.info(f"INFO: JSON response {output}")
     return func.HttpResponse(output)

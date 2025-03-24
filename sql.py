@@ -192,7 +192,7 @@ def db_merge(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mappi
             'status': f'failure: {str(e)}'
         }
     
-def db_replace(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mappings: dict, logger):
+def db_insert(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mappings: dict, logger):
     """
     Replaces records in the table based on the Import_File column.
 
@@ -208,15 +208,14 @@ def db_replace(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_map
     """
     try:
         cursor = cnxn.cursor()
-        
         # Assume there is only one unique Import_File value in the DataFrame
-        import_file_value = df['source_name'].iloc[0]
+        # import_file_value = df['source_name'].iloc[0]
 
-        # Step 1: Delete matching records
-        delete_query = f"DELETE FROM {table} WHERE {column_mappings['source_name']} = ?"
-        cursor.execute(delete_query, import_file_value)
-        deleted_count = cursor.rowcount
-        logger.info(f"Executed: DELETE FROM {table} WHERE {column_mappings['source_name']} = '{import_file_value}'")
+        # # Step 1: Delete matching records
+        # delete_query = f"DELETE FROM {table} WHERE {column_mappings['source_name']} = ?"
+        # cursor.execute(delete_query, import_file_value)
+        # deleted_count = cursor.rowcount
+        # logger.info(f"Executed: DELETE FROM {table} WHERE {column_mappings['source_name']} = '{import_file_value}'")
 
         # Step 2: Insert all records from the DataFrame
         insert_columns = ', '.join(column_mappings.values())
@@ -227,16 +226,20 @@ def db_replace(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_map
             cursor.execute(insert_query, tuple(row[col] for col in column_mappings.keys()))
             inserted_count += 1
 
+        #count unique samples inserted from sample_id
+        df['sample_id'] = df['sample_id'].astype(str)  
+        sample_count = df['sample_id'].nunique()
+        
         cnxn.commit()
         cursor.close()
         return {
-            'deleted_count': deleted_count,
+            'sample_count': sample_count,
             'inserted_count': inserted_count,
             'status': 'success'
         }
     except Exception as e:
         return {
-            'deleted_count': 0,
+            'sample_count': 0,
             'inserted_count': 0,
             'status': f'failure: {str(e)}'
         }
