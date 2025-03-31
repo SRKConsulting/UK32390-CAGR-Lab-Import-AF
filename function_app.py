@@ -179,7 +179,7 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                 'date_finalized':'date_finalised',
                 'laboratory':'laboratory'
             }
-            table = 'assay_result_testing'
+            table = 'assay_result'
             result = sql.db_insert(cnxn, df, table, column_mappings, logging)
             logging.info(result)
         except:
