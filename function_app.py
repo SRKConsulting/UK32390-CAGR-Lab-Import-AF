@@ -46,8 +46,17 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
         unique_path = parsed_path['unique_path']
         logging.info("This is unique path: "+str(unique_path))
         # Initiate lists of successful and failed sheets
-        success_sheets = []
-        failed_sheets = ['_'] # all are failed by default
+        # all are failed by default
+        inserted_count = ''
+        sample_count = ''
+        work_order_status = ''
+        client_ref = ''
+        samples_submitted = ''
+        date_finalized = ''
+        date_received = ''
+        project = ''
+        comments = ''
+        po_number = ''
         log = ''
         # get file contents
         df_workbook, log_fetch = utils.fetch_file_contents(vault_id, container, filename, logging)
@@ -55,14 +64,22 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             log += log_fetch + br
             status = status
             return utils.create_response(
-                filename, 
-                status, 
-                log, 
-                "high", 
-                success_sheets, 
-                failed_sheets,
-                logging
-            )
+                            filename, 
+                            status, 
+                            log, 
+                            "low", 
+                            inserted_count,
+                            sample_count,
+                            work_order_status,
+                            client_ref,
+                            samples_submitted,
+                            date_received,
+                            date_finalized,
+                            project,
+                            comments,
+                            po_number,
+                            logging
+                        )
         logging.info('Fetch file contents successful')
 
         ### Get access to sql connection ###
@@ -70,14 +87,22 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
         if sql_conn_string is None:
             log += log_sql_conn + br
             return utils.create_response(
-                filename, 
-                status, 
-                log, 
-                "high", 
-                success_sheets, 
-                failed_sheets,
-                logging
-            )
+                            filename, 
+                            status, 
+                            log, 
+                            "low", 
+                            inserted_count,
+                            sample_count,
+                            work_order_status,
+                            client_ref,
+                            samples_submitted,
+                            date_received,
+                            date_finalized,
+                            project,
+                            comments,
+                            po_number,
+                            logging
+                        )
         logging.info('Get access to sql connection successful')
 
         ### STARTING RESHAPE AND INSERT ###
@@ -87,14 +112,22 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             if cnxn is None:
                 log += log_sql_opendb + br
                 return utils.create_response(
-                    filename, 
-                    status, 
-                    log, 
-                    "high", 
-                    success_sheets, 
-                    failed_sheets,
-                    logging
-                )
+                            filename, 
+                            status, 
+                            log, 
+                            "low", 
+                            inserted_count,
+                            sample_count,
+                            work_order_status,
+                            client_ref,
+                            samples_submitted,
+                            date_received,
+                            date_finalized,
+                            project,
+                            comments,
+                            po_number,
+                            logging
+                        )
             logging.info('Open database successful')
 
         try:
@@ -108,8 +141,19 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             logging.info('Merged headers and results')
             df['source_name'] = path.split('/')[-1]
             logging.info('Added source name')
-            df['labratory'] = 'ALS Arabia'
-            logging.info('Added labratory to insert table')
+            df['laboratory'] = 'ALS Arabia'
+            logging.info('Added laboratory to insert table')
+
+            file_header_info = utils.file_header_info(df_workbook)
+            work_order_status = file_header_info['work_order_status']
+            client_ref = file_header_info['client_ref']
+            samples_submitted = file_header_info['samples_submitted']
+            date_received = file_header_info['date_receieved']
+            date_finalized = file_header_info['date_finalized']
+            project = file_header_info['project']
+            comments = file_header_info['comments']
+            po_number = file_header_info['po_number']
+            logging.info('Obtained header info')
 
             # Fill NaN values with empty string and convert all columns to string
             df = df.fillna('')
@@ -133,22 +177,18 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                 'result_status':'result_status',
                 'date_received':'date_received',
                 'date_finalized':'date_finalised',
-                'labratory':'labratory'
+                'laboratory':'laboratory'
             }
             table = 'assay_result_testing'
             result = sql.db_insert(cnxn, df, table, column_mappings, logging)
             logging.info(result)
-
-            #sheet_status = result['status']
-            sample_count = result['sample_count']
-            inserted_count = result['inserted_count']    
-            logging.info(log)
-
         except:
             message = f'Error inserting data. No data was inserted. \n '
             logging.error(message)
             log += message + br
-            
+
+        sample_count = result['sample_count']
+        inserted_count = result['inserted_count']
         status = 'success'
         return utils.create_response(
                             filename, 
@@ -157,6 +197,14 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                             "low", 
                             inserted_count,
                             sample_count,
+                            work_order_status,
+                            client_ref,
+                            samples_submitted,
+                            date_received,
+                            date_finalized,
+                            project,
+                            comments,
+                            po_number,
                             logging
                         )
     else:

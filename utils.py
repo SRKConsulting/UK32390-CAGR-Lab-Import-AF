@@ -47,6 +47,27 @@ def get_sql_connection(vault_id, logger):
         logger.error(e)
         return None, "Secret client authentication 'sql-connection' failed."    
 
+def file_header_info(df: pd.DataFrame):
+        dfheader_info = pd.read_excel(df, header=None, sheet_name=0)
+        work_order_status = str(dfheader_info.iloc[0, 0]).strip()
+        client_ref = str(dfheader_info.iloc[1, 0].split(':')[1].strip()).strip()
+        samples_submitted = str(dfheader_info.iloc[2, 0].split(':')[1]).strip()
+        date_received = str(dfheader_info.iloc[3, 0].split('DATE')[2].split(' : ')[1]).strip()
+        date_finalized = str(dfheader_info.iloc[3, 0].split('DATE')[1].split(' : ')[1]).strip()
+        project = str(dfheader_info.iloc[4, 0].split(' : ')[1]).strip()
+        comments = str(dfheader_info.iloc[5, 0].split(' : ')[1]).strip()
+        po_number = str(dfheader_info.iloc[6, 0].split(' : ')[1]).strip()
+        return{
+            'work_order_status': work_order_status,
+            'client_ref': client_ref,
+            'samples_submitted': samples_submitted,
+            'date_finalized': date_finalized,
+            'date_receieved': date_received,
+            'project': project,
+            'comments': comments,
+            'po_number': po_number
+        }
+
 def create_response(
         filename: str, 
         status: str, 
@@ -54,21 +75,36 @@ def create_response(
         importance: str, 
         inserted_count: str, 
         sample_count: str, 
-        logger
+        work_order_status = '',
+        client_ref = '',
+        samples_submitted = '',
+        date_received = '',
+        date_finalized = '',
+        project = '',
+        comments = '',
+        po_number = '',
+        logger = ''
     ):
     """_summary_
 
     Args:
-        filename (str)
-        status (str)
-        log (str)
-        importance (str)
-        inserted_count (str)
-        sample_count (str)
-        logger (_type_)
-
+        filename (str): _description_
+        status (str): _description_
+        log (str): _description_
+        importance (str): _description_
+        inserted_count (str): _description_
+        sample_count (str): _description_
+        work_order_status (str): _description_
+        client_ref (str): _description_
+        samples_submitted (str): _description_
+        date_received (str): _description_
+        date_finalized (str): _description_
+        project (str): _description_
+        comments (str): _description_
+        po_number (str): _description_
+        
     Returns:
-        httpresponse object
+        _type_: _description_
     """
     output = json.dumps({
         "inputfile": filename,
@@ -77,8 +113,15 @@ def create_response(
         "importance": importance, 
         "status_code": 200, 
         "inserted_count": inserted_count,
-        "sample_count" : sample_count
-        # "deleted_count":deleted_count
+        "sample_count" : sample_count,
+        "work_order_status": work_order_status,
+        "client_ref": client_ref,
+        "samples_submitted": samples_submitted,
+        "date_received": date_received,
+        "date_finalized": date_finalized,
+        "project": project,
+        "comments": comments,
+        "po_number": po_number
     })
     logger.info(f"INFO: JSON response {output}")
     return func.HttpResponse(output)
