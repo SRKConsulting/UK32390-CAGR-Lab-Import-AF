@@ -211,12 +211,6 @@ def db_insert(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mapp
         # Assume there is only one unique Import_File value in the DataFrame
         # import_file_value = df['source_name'].iloc[0]
 
-        # # Step 1: Delete matching records
-        # delete_query = f"DELETE FROM {table} WHERE {column_mappings['source_name']} = ?"
-        # cursor.execute(delete_query, import_file_value)
-        # deleted_count = cursor.rowcount
-        # logger.info(f"Executed: DELETE FROM {table} WHERE {column_mappings['source_name']} = '{import_file_value}'")
-
         # Step 2: Insert all records from the DataFrame
         insert_columns = ', '.join(column_mappings.values())
         insert_placeholders = ', '.join(['?'] * len(column_mappings))
@@ -243,3 +237,22 @@ def db_insert(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mapp
             'inserted_count': 0,
             'status': f'failure: {str(e)}'
         }
+
+def get_pk_records(cnxn: pyodbc.Connection):
+    """
+    Retrieve existing records from the SQL table based on primary keys using pyodbc.
+    """
+    query = '''
+    SELECT sample_id, lab_method, analyte
+    FROM assay_result_testing
+    '''
+
+    # Execute query using a pyodbc cursor
+    cursor = cnxn.cursor()
+    cursor.execute(query)
+    # Fetch results into a DataFrame
+    rows = cursor.fetchall()
+    columns = [column[0] for column in cursor.description]  # Extract column names
+    existing_records = pd.DataFrame.from_records(rows, columns=columns)
+    return existing_records
+

@@ -45,8 +45,8 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
         filename = parsed_path['filename']
         unique_path = parsed_path['unique_path']
         logging.info("This is unique path: "+str(unique_path))
-        # Initiate lists of successful and failed sheets
-        # all are failed by default
+
+        #? all are failed by default
         inserted_count = ''
         sample_count = ''
         work_order_status = ''
@@ -58,6 +58,7 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
         comments = ''
         po_number = ''
         log = ''
+
         # get file contents
         df_workbook, log_fetch = utils.fetch_file_contents(vault_id, container, filename, logging)
         if df_workbook is None:
@@ -105,7 +106,7 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                         )
         logging.info('Get access to sql connection successful')
 
-        ### STARTING RESHAPE AND INSERT ###
+        ###! STARTING RESHAPE AND INSERT !###
         if df_workbook : 
         ## Connect to the database ##
             cnxn, log_sql_opendb = sql.open_database(sql_conn_string, logging)
@@ -130,6 +131,7 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                         )
             logging.info('Open database successful')
 
+        # Clean Results and Header infromation from Excel File
         try:
             df_headers = utils.clean_lab_header(df_workbook)
             logging.info('Cleaned headers')
@@ -143,7 +145,10 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             logging.info('Added source name')
             df['laboratory'] = 'ALS Arabia'
             logging.info('Added laboratory to insert table')
+            # Add the current date and time to a column in the DataFrame
+            df['srk_import_timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+            # Store Header information in variables
             file_header_info = utils.file_header_info(df_workbook)
             work_order_status = file_header_info['work_order_status']
             client_ref = file_header_info['client_ref']
@@ -155,8 +160,8 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             po_number = file_header_info['po_number']
             logging.info('Obtained header info')
 
-            # Fill NaN values with empty string and convert all columns to string
-            df = df.fillna('')
+            existing_sql_records = sql.get_pk_records(cnxn)
+            df = utils.filter_new_records(df, existing_sql_records)
             # left is DF right is DB
             column_mappings = {
                 'source_name': 'source_name',
@@ -177,9 +182,10 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                 'result_status':'result_status',
                 'date_received':'date_received',
                 'date_finalized':'date_finalised',
-                'laboratory':'laboratory'
+                'laboratory':'laboratory',
+                'srk_import_timestamp':'srk_import_timestamp'
             }
-            table = 'assay_result'
+            table = 'assay_result_testing'
             result = sql.db_insert(cnxn, df, table, column_mappings, logging)
             logging.info(result)
         except:
@@ -187,6 +193,7 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             logging.error(message)
             log += message + br
 
+        # Extract counts inserted from SQL injection
         sample_count = result['sample_count']
         inserted_count = result['inserted_count']
         status = 'success'

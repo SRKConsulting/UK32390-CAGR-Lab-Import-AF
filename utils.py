@@ -206,7 +206,6 @@ def clean_lab_results(df: pd.DataFrame) -> pd.DataFrame:
     """
     # import excel file dataframe
     df_results = pd.read_excel(df, header=None, sheet_name=0)
-    #file_name_with_extension = file_path.split('/')[-1]
     #extract job title
     job_title = df_results.iloc[0, 0]
     # Remove the first 7 rows
@@ -241,6 +240,8 @@ def clean_lab_results(df: pd.DataFrame) -> pd.DataFrame:
     df_results = df_results.drop(columns=['attribute'])
     #rename columns
     df_results = df_results.rename(columns={df_results.columns[0]: 'sample_id'})
+    # remove null lab results from dataframe
+    df_results = df_results[(~df_results['text_value'].isnull()) & (df_results['text_value'] != '')]
     # qualifier from value
     df_results['qualifier'] = np.where(df_results['text_value'].str.contains('<', na=False), '<',
                     np.where(df_results['text_value'].str.contains('>', na=False), '>', 
@@ -278,12 +279,14 @@ def clean_lab_header(df: pd.DataFrame) -> pd.DataFrame:
     date_received = date_rec[1] 
     date_final = date_columns[2].str.split(':', expand=True)
     date_finalised = date_final[1] 
-
     df_header['date_received'] = date_received
     df_header['date_finalized'] = date_finalised
-    #date_received
+    # Convert the `date_received` column to SQL-compatible date format
+    df_header['date_received'] = pd.to_datetime(df_header['date_received'], errors='coerce')
+    # Convert the `date_finalized` column to SQL-compatible date format
+    df_header['date_finalized'] = pd.to_datetime(df_header['date_finalized'], errors='coerce')
+    
     df_header = df_header.drop(columns=[3])
-
     df_header = df_header.rename(columns={0: 'job_title'})
     df_header = df_header.rename(columns={1: 'client_ref'})
     df_header = df_header.rename(columns={2: 'quantity'})
@@ -292,3 +295,22 @@ def clean_lab_header(df: pd.DataFrame) -> pd.DataFrame:
     df_header = df_header.rename(columns={6: 'po_number'})
     df_header['job_title'] = job_title
     return df_header
+
+def filter_new_records(df, existing_records):
+    """
+    Filter out rows from lab `df` that already exist in the database.
+    """
+    # Use pandas merge with an outer join to find unmatched rows
+    # Perform an anti-join to exclude existing records
+    df_filtered = pd.merge(
+        df,
+        existing_records,
+        how='left',  # Keep all rows from `df`, but flag matches from `existing_records`
+        on=['sample_id', 'lab_method', 'analyte'],
+        indicator=True  # Add a column to indicate whether a match exists
+    )
+    # Keep only rows where the indicator column is "left_only" (meaning not in `existing_records`)
+    df_filtered = df_filtered[df_filtered['_merge'] == 'left_only']
+    # Drop the indicator column
+    df_filtered = df_filtered.drop('_merge', axis=1)
+    return df_filtered
