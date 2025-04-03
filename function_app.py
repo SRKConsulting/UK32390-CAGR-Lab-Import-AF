@@ -209,7 +209,7 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                 'lab_method': 'lab_method',
                 'analyte': 'analyte', 
             }
-            table = 'assay_result'
+            table = 'assay_result_testing'
             # result = sql.db_insert(cnxn, df, table, column_mappings, logging)
             # logging.info(result)
             result = sql.db_merge_batch(cnxn, df, table, column_mappings, match_conditions, logging, 1000)
