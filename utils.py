@@ -239,6 +239,8 @@ def clean_lab_results(df: pd.DataFrame) -> pd.DataFrame:
     df_results = df_results.melt (id_vars = df_results.columns[0], var_name = 'attribute', value_name = 'text_value')
     # Split 'Column1' into two new columns based on the delimiter '|'
     df_results[['lab_method', 'analyte', 'unit']] = df_results['attribute'].str.split('|', expand=True)
+    # replace '%' with 'perc'
+    df_results['unit'] = df_results['unit'].replace('%', 'perc')
     # drop split column
     df_results = df_results.drop(columns=['attribute'])
     #rename columns
