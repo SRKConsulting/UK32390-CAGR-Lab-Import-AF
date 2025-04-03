@@ -74,7 +74,8 @@ def create_response(
         log: str, 
         importance: str, 
         inserted_count: str, 
-        sample_count: str, 
+        sample_count: str,
+        updated_count: str,
         work_order_status = '',
         client_ref = '',
         samples_submitted = '',
@@ -94,6 +95,7 @@ def create_response(
         importance (str): _description_
         inserted_count (str): _description_
         sample_count (str): _description_
+        updated_count (str): _description_
         work_order_status (str): _description_
         client_ref (str): _description_
         samples_submitted (str): _description_
@@ -114,6 +116,7 @@ def create_response(
         "status_code": 200, 
         "inserted_count": inserted_count,
         "sample_count" : sample_count,
+        "updated_count" : updated_count,
         "work_order_status": work_order_status,
         "client_ref": client_ref,
         "samples_submitted": samples_submitted,
@@ -250,6 +253,7 @@ def clean_lab_results(df: pd.DataFrame) -> pd.DataFrame:
                         df_results['text_value'].str.extract(r'(\d+.\d+|\d+)')[0], 
                         df_results['text_value'])
     df_results['value'] = pd.to_numeric(df_results['value'], errors='coerce')
+    df_results['value'] != 0
     df_results['job_title'] = job_title
     return df_results
 
@@ -280,12 +284,18 @@ def clean_lab_header(df: pd.DataFrame) -> pd.DataFrame:
     date_final = date_columns[2].str.split(':', expand=True)
     date_finalised = date_final[1] 
     df_header['date_received'] = date_received
-    df_header['date_finalized'] = date_finalised
-    # Convert the `date_received` column to SQL-compatible date format
-    df_header['date_received'] = pd.to_datetime(df_header['date_received'], errors='coerce')
-    # Convert the `date_finalized` column to SQL-compatible date format
-    df_header['date_finalized'] = pd.to_datetime(df_header['date_finalized'], errors='coerce')
-    
+    df_header['date_finalized'] = date_finalised    
+    # Function to process a datetime value: convert empty/null to None or format valid values
+    def format_datetime(value):
+        if pd.isnull(value) or value == '':
+            return None  # Convert empty/blank values to NULL
+        else:
+            return pd.to_datetime(value).strftime('%Y-%m-%d 00:00:00')  # Convert valid dates to YYYY-MM-DD 00:00:00 format
+
+    # Apply the formatting function
+    df_header['date_received'] = df_header['date_received'].apply(format_datetime)
+    df_header['date_finalized'] = df_header['date_finalized'].apply(format_datetime)
+
     df_header = df_header.drop(columns=[3])
     df_header = df_header.rename(columns={0: 'job_title'})
     df_header = df_header.rename(columns={1: 'client_ref'})
@@ -306,8 +316,7 @@ def filter_new_records(df, existing_records):
         df,
         existing_records,
         how='left',  # Keep all rows from `df`, but flag matches from `existing_records`
-        on=['sample_id', 'lab_method', 'analyte'],
-        indicator=True  # Add a column to indicate whether a match exists
+        on=['sample_id', 'lab_method', 'analyte']
     )
     # Keep only rows where the indicator column is "left_only" (meaning not in `existing_records`)
     df_filtered = df_filtered[df_filtered['_merge'] == 'left_only']

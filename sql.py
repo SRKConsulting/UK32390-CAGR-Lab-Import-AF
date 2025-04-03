@@ -58,8 +58,8 @@ def db_merge_batch(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column
             batch = df.iloc[i:i + batch_size]
 
             # Create a temp table for this batch
-            cursor.execute(f"CREATE TABLE #TempBatch ({temp_table_columns})")
-            logger.info(f"Executed CREATE TABLE #TempBatch ({temp_table_columns})")
+            cursor.execute(f"CREATE TABLE #TempLabBatch ({temp_table_columns})")
+            logger.info(f"Executed CREATE TABLE #TempLabBatch ({temp_table_columns})")
 
             # Insert batch data into temp table
             params = []
@@ -67,15 +67,15 @@ def db_merge_batch(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column
                 params.append(tuple(row[col] for col in column_mappings.keys()))
 
             insert_placeholders = ', '.join(['?' for _ in column_mappings])
-            logger.info(f"Executing INSERT INTO #TempBatch ({', '.join(column_mappings.values())}) VALUES ({insert_placeholders})...")
+            logger.info(f"Executing INSERT INTO #TempLabBatch ({', '.join(column_mappings.values())}) VALUES ({insert_placeholders})...")
             cursor.executemany(
-                f"INSERT INTO #TempBatch ({', '.join(column_mappings.values())}) VALUES ({insert_placeholders})",
+                f"INSERT INTO #TempLabBatch ({', '.join(column_mappings.values())}) VALUES ({insert_placeholders})",
                 params
             )
             
             # Prepare the SQL query with dynamic columns
             update_columns = ', '.join([
-                f"target.{col} = source.{col}" for col in column_mappings.values() if col != 'srkImport_Timestamp'
+                f"target.{col} = source.{col}" for col in column_mappings.values() if col != 'srk_import_timestamp'
             ])
             insert_columns = ', '.join(column_mappings.values())
             insert_values = ', '.join([f"source.{col}" for col in column_mappings.values()])
@@ -84,7 +84,7 @@ def db_merge_batch(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column
             # Perform MERGE operation with OUTPUT clause
             sql_query = f"""
                 MERGE INTO {table} AS target
-                USING #TempBatch AS source
+                USING #TempLabBatch AS source
                 ON {match_clause}
                 WHEN MATCHED THEN
                     UPDATE SET {update_columns}
@@ -101,9 +101,18 @@ def db_merge_batch(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column
                     updated_count += 1
                 elif action[0] == 'INSERT':
                     inserted_count += 1
+            
+            distinct_insert_count = f"""
+            SELECT COUNT(DISTINCT sample_id) 
+            AS 'distinct' 
+            FROM #TempLabBatch
+            """ 
+            
+            cursor.execute(distinct_insert_count)
+            sample_count = cursor.fetchall()
 
             # Drop the temporary table
-            cursor.execute("DROP TABLE #TempBatch")
+            cursor.execute("DROP TABLE #TempLabBatch")
 
             cnxn.commit()
             print(f"Processed batch {i//batch_size + 1}, rows {i+1} to {min(i+batch_size, len(df))}")
@@ -112,6 +121,7 @@ def db_merge_batch(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column
         return {
             'updated_count': updated_count,
             'inserted_count': inserted_count,
+            'distinct_count' : sample_count[0][0],
             'status': 'success'
         }
     except Exception as e:
