@@ -75,7 +75,6 @@ def create_response(
         importance: str, 
         inserted_count: str, 
         sample_count: str,
-        updated_count: str,
         work_order_status = '',
         client_ref = '',
         samples_submitted = '',
@@ -116,7 +115,6 @@ def create_response(
         "status_code": 200, 
         "inserted_count": inserted_count,
         "sample_count" : sample_count,
-        "updated_count" : updated_count,
         "work_order_status": work_order_status,
         "client_ref": client_ref,
         "samples_submitted": samples_submitted,
@@ -199,7 +197,7 @@ def parse_path(path: str) -> dict :
         return None 
 
 def clean_lab_results(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean lab results from excel file in to results datafram
+    """Clean lab results from excel file in to results dataframe
 
     Args:
         file_path (str): path to file
@@ -216,9 +214,7 @@ def clean_lab_results(df: pd.DataFrame) -> pd.DataFrame:
     # Transpose dataframe
     transposed_df_results = df_results.T
     # Merge first three columns
-    transposed_df_results['Parameter'] = transposed_df_results.iloc[:, 0].astype(str) + '|' + \
-                                transposed_df_results.iloc[:, 1].astype(str) + '|' + \
-                                transposed_df_results.iloc[:, 2].astype(str)
+    transposed_df_results['Parameter'] = transposed_df_results.iloc[:, 0].astype(str) + '|' + transposed_df_results.iloc[:, 1].astype(str) + '|' + transposed_df_results.iloc[:, 2].astype(str)
     # Drop the original columns and keep the merged one
     transposed_df_results = transposed_df_results.drop(transposed_df_results.columns[:3], axis=1)
     # extract the columsn as a list
@@ -251,11 +247,17 @@ def clean_lab_results(df: pd.DataFrame) -> pd.DataFrame:
     df_results['qualifier'] = np.where(df_results['text_value'].str.contains('<', na=False), '<',
                     np.where(df_results['text_value'].str.contains('>', na=False), '>', 
                     None))
-    df_results['value'] = np.where(df_results['text_value'].str.contains('<|>', na=False), 
-                        df_results['text_value'].str.extract(r'(\d+.\d+|\d+)')[0], 
-                        df_results['text_value'])
-    df_results['value'] = pd.to_numeric(df_results['value'], errors='coerce')
+
+    df_results['value'] =  df_results['text_value']
+    df_results['value'].str.replace('[<>]', '', regex=True)
+    df_results['value'] = [''.join(c for c in str(value) if c.isdigit() or c == '.') for value in df_results['value']]
+    # df_results['value'] = pd.to_numeric(df_results['value'], errors='coerce')  # Convert to numeric, invalid values -> NaN
+    # df_results = df_results.dropna()  
+
+    df_results['value'] = pd.to_numeric(df_results['value'], errors='coerce')  # Coerce non-numeric to nan
+    df_results['value'] = df_results['value'].replace(np.nan, None) 
     df_results['value'] != 0
+    df_results['value'] != None
     df_results['job_title'] = job_title
     return df_results
 

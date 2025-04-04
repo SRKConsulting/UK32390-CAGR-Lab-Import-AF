@@ -47,14 +47,9 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
         unique_path = parsed_path['unique_path']
         logging.info("This is unique path: "+str(unique_path))
 
-        # # Checking for .XLS filetype.
-        # if not filename.endswith('.XLS'):
-        #     raise Exception('Error: Filetype not .XLS')
-
         #? all are blank by default
         inserted_count = ''
         sample_count = ''
-        updated_count = '',
         work_order_status = ''
         client_ref = ''
         samples_submitted = ''
@@ -78,7 +73,6 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                             "low", 
                             inserted_count,
                             sample_count,
-                            updated_count,
                             work_order_status,
                             client_ref,
                             samples_submitted,
@@ -90,6 +84,61 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                             logging
                         )
         logging.info('Fetch file contents successful')
+
+        # Check for PO Number
+        df_check = pd.read_excel(df_workbook, header=None, sheet_name=0)
+        po_number_check_value = df_check.iloc[6,0]
+        logging.info(f'PO Number check value: {po_number_check_value}')
+        logging.info(f'Sample check value: {df_check.iloc[8,0]}')
+        sample_check_value = df_check.iloc[8,0]
+        if 'PO NUMBER' not in  str(po_number_check_value).upper():
+            message = 'File Format Incorrect. PO NUMBER not found in the first column of the file.'
+            logging.error(message)
+            log += message + br
+            status = 'failed'
+            return utils.create_response(
+                            filename, 
+                            status, 
+                            log, 
+                            "low", 
+                            inserted_count,
+                            sample_count,
+                            work_order_status,
+                            client_ref,
+                            samples_submitted,
+                            date_received,
+                            date_finalized,
+                            project,
+                            comments,
+                            po_number,
+                            logging
+                        )
+        # Check for Sample
+        if 'SAMPLE' not in str(sample_check_value).upper():
+            message = 'File Format Incorrect. SAMPLE not found in the first column of the file.'
+            logging.error(message)
+            log += message + br
+            status = 'failed'
+            return utils.create_response(
+                            filename, 
+                            status, 
+                            log, 
+                            "low", 
+                            inserted_count,
+                            sample_count,
+                            work_order_status,
+                            client_ref,
+                            samples_submitted,
+                            date_received,
+                            date_finalized,
+                            project,
+                            comments,
+                            po_number,
+                            logging
+                        )
+        logging.info('File Format Check Successful')
+        # clear df_check from memory
+        del df_check
 
         ### Get access to sql connection ###
         sql_conn_string, log_sql_conn = utils.get_sql_connection(vault_id, logging)
@@ -103,7 +152,6 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                             "low", 
                             inserted_count,
                             sample_count,
-                            updated_count,
                             work_order_status,
                             client_ref,
                             samples_submitted,
@@ -130,7 +178,6 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                             "low", 
                             inserted_count,
                             sample_count,
-                            updated_count,
                             work_order_status,
                             client_ref,
                             samples_submitted,
@@ -154,15 +201,11 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             df = pd.merge(df_results, df_headers, on='job_title', how='left')
             logging.info('Merged headers and results')
             df['source_name'] = path.split('/')[-1]
-            logging.info('Added source name')
             df['laboratory'] = 'ALS Arabia'
-            logging.info('Added laboratory')
             # Add the current date and time to a column in the DataFrame
             df['srk_import_timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')           
-            logging.info('Added timestamp')
 
             # Store Header information in variables
-            #df_headers = utils.df_headers(df_workbook)
             work_order_status = str(df_headers['job_title'].iloc[0])
             client_ref = str(df_headers['client_ref'].iloc[0])
             samples_submitted = str(df_headers['quantity'].iloc[0])
@@ -172,15 +215,13 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
             comments = str(df_headers['cert_comment'].iloc[0])
             po_number = str(df_headers['po_number'].iloc[0])
             logging.info('Obtained header info')
-
+            logging.info(f'Records to be inserted from file: {len(df)}')
         except:
-            message = f'Error Cleaning Files before insertion. \n '
+            message = f'Error Cleaning Files before insertion.'
             logging.error(message)
             log += message + br
 
         try:
-            # existing_sql_records = sql.get_pk_records(cnxn)
-            # df = utils.filter_new_records(df, existing_sql_records)
             # left is DF right is DB
             column_mappings = {
                 'source_name': 'source_name',
@@ -209,16 +250,13 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                 'lab_method': 'lab_method',
                 'analyte': 'analyte', 
             }
-            table = 'assay_result_testing'
-            # result = sql.db_insert(cnxn, df, table, column_mappings, logging)
-            # logging.info(result)
-            result = sql.db_merge_batch(cnxn, df, table, column_mappings, match_conditions, logging, 1000)
-            # Extract counts inserted from SQL injection
+            table = 'assay_result'
+            logging.info('Attempting to insert data into SQL')
+            result = sql.db_insert_batch(cnxn, df, table, column_mappings, match_conditions, logging, 1000)
             logging.info(result)
             sample_count = result['distinct_count']
             inserted_count = result['inserted_count']
-            updated_count = result['updated_count']
-            message = f'All lab results processed. \n'
+            message = f'No Errors inserting data. {inserted_count} records inserted.'
             logging.info(message)
             log = message
         except:
@@ -234,7 +272,6 @@ def http_lab(req: func.HttpRequest) -> func.HttpResponse:
                             "low", 
                             inserted_count,
                             sample_count,
-                            updated_count,
                             work_order_status,
                             client_ref,
                             samples_submitted,

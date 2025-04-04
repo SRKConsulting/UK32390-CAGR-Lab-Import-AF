@@ -202,6 +202,115 @@ def db_merge(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mappi
             'status': f'failure: {str(e)}'
         }
     
+def db_insert_batch(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mappings: dict, match_conditions: dict, logger, batch_size=5000):
+    """
+    Batch inserts records using MERGE - only inserts records that that are not matched.
+
+    Parameters:
+    - cnxn: Database connection object.
+    - df: DataFrame containing the data to be merged.
+    - table: db table
+    - column_mappings: Dictionary mapping DataFrame columns to table columns.
+    - match_conditions: Dictionary mapping target columns to source columns for the ON clause.
+    - batch_size: Number of rows to process in each batch.
+
+    Returns:
+    - A dictionary with counts of updated and inserted records, and a success/failure status.
+    """
+    try:
+        cursor = cnxn.cursor()
+        inserted_count = 0
+
+        # Retrieve the column definitions from the main table
+        cursor.execute(f"""
+            SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = '{table}'
+        """)
+        column_definitions = cursor.fetchall()
+
+        # Construct the CREATE TABLE statement for the temp table
+        temp_table_columns = ', '.join([
+            f"{col[0]} {col[1]}" + 
+            (f"({col[2]})" if col[2] and col[2] != -1 else "(max)" if col[1] in ['nvarchar', 'varchar', 'varbinary'] else "") + 
+            (" NULL" if col[3] == 'YES' else " NOT NULL")
+            for col in column_definitions
+        ])
+
+        # Process data in batches
+        for i in range(0, len(df), batch_size):
+            batch = df.iloc[i:i + batch_size]
+
+            # Create a temp table for this batch
+            cursor.execute(f"CREATE TABLE #TempLabBatch ({temp_table_columns})")
+            logger.info(f"Executed CREATE TABLE #TempLabBatch ({temp_table_columns})")
+
+            # Insert batch data into temp table
+            params = []
+            for _, row in batch.iterrows():
+                params.append(tuple(row[col] for col in column_mappings.keys()))
+
+            insert_placeholders = ', '.join(['?' for _ in column_mappings])
+            logger.info(f"Executing INSERT INTO #TempLabBatch ({', '.join(column_mappings.values())}) VALUES ({insert_placeholders})...")
+            cursor.executemany(
+                f"INSERT INTO #TempLabBatch ({', '.join(column_mappings.values())}) VALUES ({insert_placeholders})",
+                params
+            )
+            
+            # # Prepare the SQL query with dynamic columns
+            # update_columns = ', '.join([
+            #     f"target.{col} = source.{col}" for col in column_mappings.values() if col != 'srk_import_timestamp'
+            # ])
+            insert_columns = ', '.join(column_mappings.values())
+            insert_values = ', '.join([f"source.{col}" for col in column_mappings.values()])
+            match_clause = ' AND '.join([f"target.{target_col} = source.{source_col}" for target_col, source_col in match_conditions.items()])
+
+            distinct_record_count = f"""
+            SELECT COUNT(*) AS distinct_count
+            FROM (
+                SELECT DISTINCT sample_id, lab_method, analyte
+                FROM #TempLabBatch
+            ) AS subquery;
+            """ 
+
+            # Perform MERGE operation with OUTPUT clause
+            sql_query = f"""
+                MERGE INTO {table} AS target
+                USING #TempLabBatch AS source
+                ON {match_clause}
+                WHEN NOT MATCHED THEN
+                    INSERT ({insert_columns})
+                    VALUES ({insert_values})
+                OUTPUT $action;
+            """
+            cursor.execute(sql_query)
+
+            # Get the result of the OUTPUT clause
+            for action in cursor.fetchall():
+                if action[0] == 'INSERT':
+                    inserted_count += 1
+            
+            cursor.execute(distinct_record_count)
+            sample_count = cursor.fetchall()
+
+            # Drop the temporary table
+            cursor.execute("DROP TABLE #TempLabBatch")
+
+            cnxn.commit()
+            print(f"Processed batch {i//batch_size + 1}, rows {i+1} to {min(i+batch_size, len(df))}")
+
+        cursor.close()
+        return {
+            'inserted_count': inserted_count,
+            'distinct_count' : sample_count[0][0],
+            'status': 'success'
+        }
+    except Exception as e:
+        return {
+            'inserted_count': inserted_count,
+            'status': f'failure: {str(e)}'
+        }
+
 def db_insert(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mappings: dict, logger):
     """
     Replaces records in the table based on the Import_File column.
@@ -247,22 +356,3 @@ def db_insert(cnxn: pyodbc.Connection, df: pd.DataFrame, table: str, column_mapp
             'inserted_count': 0,
             'status': f'failure: {str(e)}'
         }
-
-def get_pk_records(cnxn: pyodbc.Connection):
-    """
-    Retrieve existing records from the SQL table based on primary keys using pyodbc.
-    """
-    query = '''
-    SELECT sample_id, lab_method, analyte
-    FROM assay_result_testing
-    '''
-
-    # Execute query using a pyodbc cursor
-    cursor = cnxn.cursor()
-    cursor.execute(query)
-    # Fetch results into a DataFrame
-    rows = cursor.fetchall()
-    columns = [column[0] for column in cursor.description]  # Extract column names
-    existing_records = pd.DataFrame.from_records(rows, columns=columns)
-    return existing_records
-
